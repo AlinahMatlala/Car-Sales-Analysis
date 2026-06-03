@@ -1250,3 +1250,195 @@ FROM `workspace`.`bright_car_sales`.`car_sales_data`)SELECT
 FROM car_sales_clean
 GROUP BY region, make
 ORDER BY region, total_revenue DESC;
+
+--------Black leads in both units sold and total revenue, white follows
+WITH car_sales_clean AS(SELECT year,
+       COALESCE(make, 'Unknown') AS make,
+       COALESCE(model, 'Unknown') AS model,
+       vin,
+       state,
+       condition,
+       seller,
+       mmr,
+       sellingprice,
+       saledate,
+       COALESCE(body, 'Unknown') AS body,
+       COALESCE(trim, 'Unknown') AS trim,
+      
+    COUNT(*) OVER (PARTITION BY make, model, saledate ) AS Units_Sold,
+  
+    sellingprice * COUNT(*) OVER (PARTITION BY make, model, saledate) AS Total_Revenue,
+
+    ROUND(((sellingprice - mmr) / NULLIF(sellingprice, 0)) * 100, 2) AS Profit_Margin,
+
+    CASE
+           WHEN mmr IS NULL OR sellingprice IS NULL THEN 'Unknown'                                  
+           WHEN ((sellingprice - mmr) / NULLIF(sellingprice, 0)) * 100 > 10 THEN 'High Margin'
+           WHEN ((sellingprice - mmr) / NULLIF(sellingprice, 0)) * 100 >= 0 AND ((sellingprice - mmr) / NULLIF(sellingprice, 0)) * 100 <= 10 THEN 'Medium Margin'
+           ELSE 'Low Margin'
+    END AS Profit_margin_tier,
+
+    CASE
+        WHEN saledate IS NULL THEN 'Unknown'
+        ELSE CONCAT(MONTHNAME(TO_DATE(SUBSTRING(saledate, 5), 'MMM dd yyyy HH:mm:ss')),' ',CAST(YEAR(TO_DATE(SUBSTRING(saledate, 5), 'MMM dd yyyy HH:mm:ss')) AS STRING))
+    END AS sale_period,
+    
+
+    CASE
+        WHEN transmission IS NULL THEN 'Unknown'
+        WHEN transmission = 'automatic' THEN 'Automatic'
+        WHEN transmission = 'manual' THEN 'Manual'
+        ELSE transmission
+    END AS transmission,
+
+    CASE
+        WHEN state IN ('ca', 'or', 'wa', 'nv', 'az') THEN 'West'
+        WHEN state IN ('tx', 'ok', 'nm', 'co') THEN 'South West'
+        WHEN state IN ('fl', 'ga', 'nc', 'sc', 'va') THEN 'South East'
+        WHEN state IN ('ny', 'nj', 'pa', 'ma', 'ct') THEN 'North East'
+        WHEN state IN ('il', 'oh', 'mi', 'mn', 'wi') THEN 'Mid West'
+        ELSE 'Other'
+    END AS region,
+
+    CASE
+        WHEN condition IS NULL THEN 'Unknown'
+        WHEN condition > 0  AND condition <= 10 THEN 'Poor'
+        WHEN condition > 10 AND condition <= 20 THEN 'Fair'
+        WHEN condition > 20 AND condition <= 30 THEN 'Good'
+        WHEN condition > 30 AND condition <= 40 THEN 'Very Good'
+        WHEN condition > 40 AND condition <= 49 THEN 'Excellent'
+        ELSE 'Unknown'
+    END AS condition_bucket,
+
+    CASE     
+         WHEN odometer IS NULL THEN 'Unknown'                          
+        WHEN odometer BETWEEN 0 AND 10000 THEN '0 - 10k'
+        WHEN odometer > 10000 AND odometer <= 30000  THEN '10k - 30k'
+        WHEN odometer > 30000 AND odometer <= 60000  THEN '30k - 60k'
+        WHEN odometer > 60000 AND odometer <= 100000 THEN '60k - 100k'
+        WHEN odometer > 100000 AND odometer <= 150000  THEN '100k - 150k'
+        WHEN odometer > 150000 THEN '150k+'
+        ELSE 'Unknown'
+    END AS mileage_bucket,
+
+    CASE
+        WHEN interior IS NULL THEN 'Unknown'
+        WHEN interior = '—'   THEN 'Unknown'
+        ELSE interior
+    END AS interior,
+
+    
+    CASE
+        WHEN color IS NULL THEN 'Unknown'
+        WHEN color = '—'   THEN 'Unknown'
+        ELSE color
+    END AS color
+ 
+FROM `workspace`.`bright_car_sales`.`car_sales_data`)
+SELECT
+    color,
+    COUNT(*) AS units_sold,
+    SUM(total_revenue) AS total_revenue
+FROM car_sales_clean
+WHERE color != 'Unknown'
+AND color != '—'
+GROUP BY color
+ORDER BY units_sold DESC;
+
+------Relationship between price, mileage and year of manufacture
+---- Year of manufacture is the strongest price driver, 2012 vehicle at low mileage sells for R20,554 while a 1998 vehicle at low mileage sells for only R4,013.
+---Mileage accelerates depreciation significantly,  1997 vs 1998 — the 1998 at 30k–60k miles (R4,013) is nearly double the 1997 at 60k–100k miles (R1,849) despite being only one year newer. Mileage is compounding the age effect.
+---High mileage old vehicles are near worthless, A 2001 vehicle with 150k+ miles sells for just R1,664 — barely worth stocking or selling.
+WITH car_sales_clean AS(SELECT year,
+       COALESCE(make, 'Unknown') AS make,
+       COALESCE(model, 'Unknown') AS model,
+       vin,
+       state,
+       condition,
+       seller,
+       mmr,
+       sellingprice,
+       saledate,
+       COALESCE(body, 'Unknown') AS body,
+       COALESCE(trim, 'Unknown') AS trim,
+      
+    COUNT(*) OVER (PARTITION BY make, model, saledate ) AS Units_Sold,
+  
+    sellingprice * COUNT(*) OVER (PARTITION BY make, model, saledate) AS Total_Revenue,
+
+    ROUND(((sellingprice - mmr) / NULLIF(sellingprice, 0)) * 100, 2) AS Profit_Margin,
+
+    CASE
+           WHEN mmr IS NULL OR sellingprice IS NULL THEN 'Unknown'                                  
+           WHEN ((sellingprice - mmr) / NULLIF(sellingprice, 0)) * 100 > 10 THEN 'High Margin'
+           WHEN ((sellingprice - mmr) / NULLIF(sellingprice, 0)) * 100 >= 0 AND ((sellingprice - mmr) / NULLIF(sellingprice, 0)) * 100 <= 10 THEN 'Medium Margin'
+           ELSE 'Low Margin'
+    END AS Profit_margin_tier,
+
+    CASE
+        WHEN saledate IS NULL THEN 'Unknown'
+        ELSE CONCAT(MONTHNAME(TO_DATE(SUBSTRING(saledate, 5), 'MMM dd yyyy HH:mm:ss')),' ',CAST(YEAR(TO_DATE(SUBSTRING(saledate, 5), 'MMM dd yyyy HH:mm:ss')) AS STRING))
+    END AS sale_period,
+    
+
+    CASE
+        WHEN transmission IS NULL THEN 'Unknown'
+        WHEN transmission = 'automatic' THEN 'Automatic'
+        WHEN transmission = 'manual' THEN 'Manual'
+        ELSE transmission
+    END AS transmission,
+
+    CASE
+        WHEN state IN ('ca', 'or', 'wa', 'nv', 'az') THEN 'West'
+        WHEN state IN ('tx', 'ok', 'nm', 'co') THEN 'South West'
+        WHEN state IN ('fl', 'ga', 'nc', 'sc', 'va') THEN 'South East'
+        WHEN state IN ('ny', 'nj', 'pa', 'ma', 'ct') THEN 'North East'
+        WHEN state IN ('il', 'oh', 'mi', 'mn', 'wi') THEN 'Mid West'
+        ELSE 'Other'
+    END AS region,
+
+    CASE
+        WHEN condition IS NULL THEN 'Unknown'
+        WHEN condition > 0  AND condition <= 10 THEN 'Poor'
+        WHEN condition > 10 AND condition <= 20 THEN 'Fair'
+        WHEN condition > 20 AND condition <= 30 THEN 'Good'
+        WHEN condition > 30 AND condition <= 40 THEN 'Very Good'
+        WHEN condition > 40 AND condition <= 49 THEN 'Excellent'
+        ELSE 'Unknown'
+    END AS condition_bucket,
+
+    CASE     
+         WHEN odometer IS NULL THEN 'Unknown'                          
+        WHEN odometer BETWEEN 0 AND 10000 THEN '0 - 10k'
+        WHEN odometer > 10000 AND odometer <= 30000  THEN '10k - 30k'
+        WHEN odometer > 30000 AND odometer <= 60000  THEN '30k - 60k'
+        WHEN odometer > 60000 AND odometer <= 100000 THEN '60k - 100k'
+        WHEN odometer > 100000 AND odometer <= 150000  THEN '100k - 150k'
+        WHEN odometer > 150000 THEN '150k+'
+        ELSE 'Unknown'
+    END AS mileage_bucket,
+
+    CASE
+        WHEN interior IS NULL THEN 'Unknown'
+        WHEN interior = '—'   THEN 'Unknown'
+        ELSE interior
+    END AS interior,
+
+    
+    CASE
+        WHEN color IS NULL THEN 'Unknown'
+        WHEN color = '—'   THEN 'Unknown'
+        ELSE color
+    END AS color
+ 
+FROM `workspace`.`bright_car_sales`.`car_sales_data`)
+SELECT
+    year,
+    mileage_bucket,
+    COUNT(*) AS units_sold,
+    ROUND(AVG(sellingprice), 2) AS avg_selling_price
+FROM car_sales_clean
+WHERE year IS NOT NULL
+GROUP BY year, 
+mileage_bucket
+ORDER BY selling_price DESC;
